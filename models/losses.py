@@ -8,6 +8,7 @@ import torchvision.models as models
 import util.util as util
 from util.image_pool import ImagePool
 from torch.autograd import Variable
+import torch.nn.functional as F
 ###############################################################################
 # Functions
 ###############################################################################
@@ -41,9 +42,26 @@ class PerceptualLoss():
 		f_fake = self.contentFunc.forward(fakeIm)
 		f_real = self.contentFunc.forward(realIm)
 		f_real_no_grad = f_real.detach()
-		loss = self.criterion(f_fake, f_real_no_grad)
+		percep_loss = self.criterion(f_fake, f_real_no_grad)
+		pixel_loss = self.criterion(fakeIm,realIm)   #######
+
+		real1 = F.avg_pool2d(f_real_no_grad,(f_real_no_grad.size(-2),f_real_no_grad.size(-1)))
+		fake1 = F.avg_pool2d(f_fake,(f_fake.size(-2),f_fake.size(-1)))
+		deavg_fake = f_fake - fake1
+		deavg_real = f_real_no_grad - real1
+		fake_std = F.lp_pool2d(deavg_fake,2,(deavg_fake.size(-2),deavg_fake.size(-1)))/np.sqrt(deavg_fake.size(-2)*deavg_fake.size(-1))
+		real_std = F.lp_pool2d(deavg_real,2, (deavg_real.size(-2),deavg_real.size(-1)))/np.sqrt(deavg_real.size(-2)*deavg_real.size(-1))
+		fake_stat = torch.cat((fake1,fake_std),1)
+		real_stat = torch.cat((real1,real_std),1)   #size(1,512,1,1)
+		#m = nn.AvgPool2d(f_real_no_grad.size(3),stride=1)
+		#fake1 = m(f_fake)
+		#real1 = m(f_real_no_grad)
+		#torch.nn.functional.lp_pool2d(input, norm_type, kernel_size, stride=None, ceil_mode=False)
+		fstat_loss = self.criterion(fake_stat,real_stat)
+
+		loss = fstat_loss
 		return loss
-		
+
 class GANLoss(nn.Module):
 	def __init__(self, use_l1=True, target_real_label=1.0, target_fake_label=0.0,
 				 tensor=torch.FloatTensor):
